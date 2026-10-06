@@ -1,94 +1,98 @@
-# BioHub Cell Tracking — medalla de bronce con una cabeza de refinado sub-voxel propia
+# BioHub Cell Tracking — a bronze medal from my own sub-voxel refinement head
 
-Solución a la competición de Kaggle [BioHub – Cell Tracking During Development](https://www.kaggle.com/competitions/biohub-cell-tracking-during-development):
-seguir cada célula de un embrión en vídeos de microscopía 3D y reconstruir su linaje. Sobre la pila pública
-de detección y enlace añadí una red diminuta que corrige la posición de cada célula detectada. Esa pieza es la que dio
-la medalla.
+Solution to the Kaggle competition [BioHub – Cell Tracking During Development](https://www.kaggle.com/competitions/biohub-cell-tracking-during-development):
+track every cell of an embryo across 3D microscopy videos and reconstruct its lineage. On top of the public
+detection-and-linking stack I added a tiny network that corrects the position of each detected cell. That piece is
+what earned the medal.
 
-## Resultado
+![Public versus private score for each submission: the public leaderboard ranked them in the wrong order](docs/img/public-vs-private.png)
 
-**Bronce: puesto 391 de 4.020 equipos en el leaderboard privado** (corte del bronce: puesto 401).
+## Result
 
-Mismos envíos, público (29 % de los vídeos ocultos) contra privado (71 %):
+**Bronze: 371st of 4,020 teams on the final private leaderboard** (391st before Kaggle's post-close verification;
+the bronze cut sat at 401st).
 
-| envío | qué cambia | público | **privado** |
+Same submissions, public (29% of the held-out videos) against private (71%):
+
+| submission | what changes | public | **private** |
 | --- | --- | --- | --- |
-| pila base, sin cabeza | — | 0,947 | 0,914 |
-| pila + cabeza v1 | cabeza entrenada con 24 vídeos | **0,952** | 0,919 |
-| pila + flow2 + gapfill + cabeza v1 — **el seleccionado** | | **0,952** | **0,920 → bronce** |
-| ídem con cabeza v2 | cabeza entrenada con 64 vídeos | 0,950 | **0,921** (el mejor, no seleccionado) |
-| ídem con la cabeza pública de otro participante | la que usaban cientos de equipos | 0,950 | 0,917 |
-| ídem con la cabeza v1 a media escala | desplazamiento × 0,5 | 0,949 | 0,919 |
+| base stack, no head | — | 0.947 | 0.914 |
+| stack + head v1 | head trained on 24 videos | **0.952** | 0.919 |
+| stack + flow2 + gapfill + head v1 — **the selected one** | | **0.952** | **0.920 → bronze** |
+| same with head v2 | head trained on 64 videos | 0.950 | **0.921** (the best, not selected) |
+| same with another participant's public head | the one hundreds of teams used | 0.950 | 0.917 |
+| same with head v1 at half scale | displacement × 0.5 | 0.949 | 0.919 |
 
-La cabeza vale **+0,006 en el privado** (0,914 → 0,920). Sin ella no había medalla.
+The head is worth **+0.006 on the private leaderboard** (0.914 → 0.920). Without it there was no medal.
 
-## El hallazgo que estructura la solución
+## The finding that structures the solution
 
-**Importaba más dónde están las células que cómo se enlazan.** Probé ocho variantes del umbral de
-detección, del enlace y del post-proceso (incluido un prior de flujo que en el banco local ganaba +0,0099); todas se
-quedaron en 0,947. Lo único que sacó al envío de ese bloque fue mover cada detección un máximo de 2 µm.
+**Where the cells are mattered more than how they are linked.** I tried eight variants of the detection threshold,
+the linking and the post-processing (including a flow prior that gained +0.0099 on the local bench); all of them
+stayed at 0.947. The only thing that pulled a submission out of that block was moving each detection by at most 2 µm.
 
-**Para la cabeza, la medición local acertó y el leaderboard público se equivocó.** En 12 vídeos que ninguna de mis
-cabezas vio al entrenar, la distancia media detección→célula real baja un 26,65 % con v2, un 25,71 % con v1 y un
-10,22 % con la cabeza pública. El privado dio el mismo orden: 0,921 > 0,920 > 0,917. El público, con unos 40 vídeos,
-dijo lo contrario, y fue el que usé para elegir los dos envíos finales. Por eso el mejor en privado quedó fuera.
+**For the head, the local measurement was right and the public leaderboard was wrong.** Across 12 videos that none of
+my heads saw during training, the mean detection→true-cell distance drops by 26.65% with v2, 25.71% with v1 and
+10.22% with the public head. The private leaderboard gave the same ordering: 0.921 > 0.920 > 0.917. The public one,
+built on about 40 videos, said the opposite — and it was the one I used to pick the two final submissions. That is
+why the best private score was left out.
 
-## Arquitectura
+## Architecture
 
-- **Entrada:** 224 valores por detección = los 32 canales del UNet en la detección y las diferencias con sus 6 vecinos,
-  en la rejilla submuestreada (1, 4, 4), que a 1,625 µm/vóxel es isótropa.
-- **Red:** MLP 224 → 32 → 3 (SiLU), 7.299 parámetros. La última capa arranca a cero, así que empieza sin mover nada.
-  La salida está acotada a 2 µm (`2·d / (1 + |d|)`).
-- **Tres cambios acoplados** en el script de predicción (`patch_predictor()`): refinar justo después de detectar,
-  **no** redondear a entero al reescalar, e indexar las features del transformer con interpolación **trilineal**.
-  El indexado entero de serie trunca (12,7 → 12) y leería la celda equivocada.
-- **Entrenamiento:** capturo las features en vídeos de train y emparejo cada detección con su célula real
-  (algoritmo húngaro a 7 µm, el radio de la métrica oficial). Mido **por vídeo** y **por embrión no visto**, con una
-  puerta: si no mejora en los vídeos retenidos, la cabeza no se usa. La v1 mejora 6 de 6 vídeos retenidos (−20,5 %)
-  y, entrenada en un embrión y medida en el otro, −6,5 % y −13,6 %.
+- **Input:** 224 values per detection — the UNet's 32 channels at the detection plus the differences against its 6
+  neighbours, on the subsampled (1, 4, 4) grid, which at 1.625 µm/voxel is isotropic.
+- **Network:** MLP 224 → 32 → 3 (SiLU), 7,299 parameters. The last layer starts at zero, so it begins by moving
+  nothing. The output is bounded to 2 µm (`2·d / (1 + |d|)`).
+- **Three coupled changes** in the prediction script (`patch_predictor()`): refine immediately after detecting, do
+  **not** round to integers when rescaling, and index the transformer features with **trilinear** interpolation. The
+  default integer indexing truncates (12.7 → 12) and would read the wrong cell.
+- **Training:** I capture the features on training videos and match each detection to its true cell (Hungarian
+  algorithm at 7 µm, the radius of the official metric). I measure **per video** and **per unseen embryo**, with a
+  gate: if it does not improve on the held-out videos, the head is not used. v1 improves 6 of 6 held-out videos
+  (−20.5%) and, trained on one embryo and measured on the other, −6.5% and −13.6%.
 
-## Qué se midió y no funcionó
+## What was measured and did not work
 
-- **Prior de flujo vecinal (flow2) y gapfill:** +0,0099 de Jaccard en el banco local (17 de 24 vídeos mejoran), cero
-  en el público y en el privado. Los pesos del detector habían visto esos vídeos etiquetados y el banco era optimista.
-- **Veto de divisiones más permisivo** (0,25 → 0,15): −0,002 en el público. **TTA con volteo en Z:** −0,006.
-- **Divisiones aprendidas con el transformer:** 40-60 falsas por cada verdadera a cualquier umbral.
-- **Cabeza «más conservadora»** (desplazamiento a la mitad): peor en público y en privado (0,949 / 0,919).
-- **Quitar el validador del pipeline público** para ahorrar tiempo: −0,001, confirmado por tres fuentes.
+- **Neighbour flow prior (flow2) and gapfill:** +0.0099 Jaccard on the local bench (17 of 24 videos improve), zero on
+  both public and private. The detector weights had already seen those labelled videos, so the bench was optimistic.
+- **A more permissive division veto** (0.25 → 0.15): −0.002 on the public leaderboard. **Z-flip TTA:** −0.006.
+- **Divisions learned with the transformer:** 40–60 false positives per true one at any threshold.
+- **A "more conservative" head** (half the displacement): worse on both public and private (0.949 / 0.919).
+- **Dropping the validator from the public pipeline** to save time: −0.001, confirmed by three sources.
 
-## Limitaciones y siguientes pasos
+## Limitations and next steps
 
-- El detector y el modelo de aristas son los públicos (no los reentrené). La cabeza se entrena sobre vídeos que esos
-  pesos ya vieron, y así se mide.
-- Cada variante se envió una sola vez: diferencias de 0,001 en el público están dentro del ruido.
-- Lo siguiente habría sido entrenar la cabeza con los 199 vídeos etiquetados. Otro participante lo publicó después del
-  cierre.
+- The detector and the edge model are the public ones (I did not retrain them). The head is trained on videos those
+  weights have already seen, and it is measured that way.
+- Each variant was submitted exactly once: differences of 0.001 on the public leaderboard are within the noise.
+- The next step would have been training the head on all 199 labelled videos. Another participant published that
+  after the close.
 
-## Reproducir
+## Reproducing
 
 ```bash
 pip install -r requirements.txt
-pytest -q tests/                      # contrato del módulo: 224 entradas, desplazamiento ≤ 2 µm, trilineal = gather en enteros
+pytest -q tests/     # module contract: 224 inputs, displacement ≤ 2 µm, trilinear = gather on integers
 ```
 
-El pipeline completo corre en Kaggle (GPU T4, tope de 12 h): **[notebook público](https://www.kaggle.com/code/marcmaldonado/biohub-sub-voxel-head-0-921-private)**,
-que carga la cabeza desde el **[dataset público](https://www.kaggle.com/datasets/marcmaldonado/biohub-coordref-head-public)**
-(v1 y v2, con los logs de entrenamiento). Para entrenar una cabeza propia:
+The full pipeline runs on Kaggle (T4 GPU, 12 h cap): **[public notebook](https://www.kaggle.com/code/marcmaldonado/biohub-sub-voxel-head-0-921-private)**,
+which loads the head from the **[public dataset](https://www.kaggle.com/datasets/marcmaldonado/biohub-coordref-head-public)**
+(v1 and v2, with the training logs). To train your own head:
 
 ```python
 import coordref
-coordref.patch_predictor("scripts/predict_unet_transformer.py", mode="capture")  # vuelca <vídeo>/<t>.npz
+coordref.patch_predictor("scripts/predict_unet_transformer.py", mode="capture")  # dumps <video>/<t>.npz
 ```
 ```bash
-python coordref/train_coordref.py --captures capturas/ --train-dir train/ --out head.pt              # partición por vídeo
-python coordref/train_coordref.py --captures capturas/ --train-dir train/ --out head.pt --val-prefix 44b6   # embrión no visto
+python coordref/train_coordref.py --captures captures/ --train-dir train/ --out head.pt              # split by video
+python coordref/train_coordref.py --captures captures/ --train-dir train/ --out head.pt --val-prefix 44b6   # unseen embryo
 ```
 
-## Créditos
+## Credits
 
-La idea y la arquitectura de la cabeza son de **anvithpothula** (notebook público *biohub-0-953-lb-original*); este
-código es una reimplementación independiente, entrenada con más datos. La pila sobre la que va: detector,
-DeepCenter y *support pack* de **pilkwang**; *harmonic-fusion v30* de **flexonafft**; `ILP_DIVISION_WEIGHT` 0,6 de
-**zhehaoliang**; `SECONDARY_EDGE_FEATURE_TTA_WEIGHT` 1,0 de **sjlee101**; flow2 y gapfill de **thtennant**.
+The idea and the architecture of the head are **anvithpothula's** (public notebook *biohub-0-953-lb-original*); this
+code is an independent reimplementation, trained on more data. The stack it sits on: detector, DeepCenter and
+*support pack* by **pilkwang**; *harmonic-fusion v30* by **flexonafft**; `ILP_DIVISION_WEIGHT` 0.6 by
+**zhehaoliang**; `SECONDARY_EDGE_FEATURE_TTA_WEIGHT` 1.0 by **sjlee101**; flow2 and gapfill by **thtennant**.
 
-Licencia MIT.
+MIT licence.
