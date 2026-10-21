@@ -1,9 +1,10 @@
-# BioHub Cell Tracking — a bronze medal from my own sub-voxel refinement head
+# BioHub Cell Tracking — a bronze medal from a reimplemented, retrained sub-voxel refinement head
 
 Solution to the Kaggle competition [BioHub – Cell Tracking During Development](https://www.kaggle.com/competitions/biohub-cell-tracking-during-development):
 track every cell of an embryo across 3D microscopy videos and reconstruct its lineage. On top of the public
-detection-and-linking stack I added a tiny network that corrects the position of each detected cell. That piece is
-what earned the medal.
+detection-and-linking stack I added my reimplementation of a tiny network that corrects the position of each detected
+cell (idea and architecture by anvithpothula, see [Credits](#credits)), retrained on more videos. That piece is what
+earned the medal.
 
 ![Public versus private score for each submission: the public leaderboard ranked them in the wrong order](docs/img/public-vs-private.png)
 
