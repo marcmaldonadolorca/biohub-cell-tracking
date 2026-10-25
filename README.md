@@ -1,5 +1,6 @@
 # BioHub Cell Tracking — a bronze medal from a reimplemented, retrained sub-voxel refinement head
 
+
 Solution to the Kaggle competition [BioHub – Cell Tracking During Development](https://www.kaggle.com/competitions/biohub-cell-tracking-during-development):
 track every cell of an embryo across 3D microscopy videos and reconstruct its lineage. On top of the public
 detection-and-linking stack I added my reimplementation of a tiny network that corrects the position of each detected
@@ -73,16 +74,34 @@ why the best private score was left out.
 
 ```bash
 pip install -r requirements.txt
-pytest -q tests/     # module contract: 224 inputs, displacement ≤ 2 µm, trilinear = gather on integers
+pytest -q tests/     # module contract: 224 inputs, displacement ≤ 2 µm, trilinear = gather on integers,
+                     # heads that did not pass the held-out gate are refused
 ```
+
+The same tests run in GitHub Actions on every push (CPU-only PyTorch, no competition data needed).
 
 The full pipeline runs on Kaggle (T4 GPU, 12 h cap): **[public notebook](https://www.kaggle.com/code/marcmaldonado/biohub-sub-voxel-head-0-921-private)**,
 which loads the head from the **[public dataset](https://www.kaggle.com/datasets/marcmaldonado/biohub-coordref-head-public)**
-(v1 and v2, with the training logs). To train your own head:
+(v1 and v2, with the training logs).
+
+**`scripts/predict_unet_transformer.py` is not in this repository and is not mine.** It is the inference script of
+**pilkwang's** public stack: it ships inside his support pack
+([`pilkwang/biohub-tracking-support-pack-50ep-v1`](https://www.kaggle.com/datasets/pilkwang/biohub-tracking-support-pack-50ep-v1)),
+the inference repository that his public notebook
+[`biohub-cell-tracking-two-seeds-logit-blend`](https://www.kaggle.com/code/pilkwang/biohub-cell-tracking-two-seeds-logit-blend)
+and the public notebooks built on it run. My notebook copies that repository to `/kaggle/working/tracking_repo`,
+checks the SHA-256 of the script and the weights, and `patch_predictor()` then edits the script in place through
+exact string anchors (it raises if an anchor is missing). To train your own head, from a copy of that inference
+repository:
 
 ```python
-import coordref
-coordref.patch_predictor("scripts/predict_unet_transformer.py", mode="capture")  # dumps <video>/<t>.npz
+import shutil, sys
+from pathlib import Path
+
+scripts = Path("tracking_repo/scripts")                       # from pilkwang's support pack
+shutil.copy("coordref/coordref.py", scripts / "coordref.py")  # the patched script imports it
+sys.path.insert(0, str(scripts)); from coordref import patch_predictor
+patch_predictor(scripts / "predict_unet_transformer.py", mode="capture")  # dumps <video>/<t>.npz
 ```
 ```bash
 python coordref/train_coordref.py --captures captures/ --train-dir train/ --out head.pt              # split by video
@@ -91,9 +110,12 @@ python coordref/train_coordref.py --captures captures/ --train-dir train/ --out 
 
 ## Credits
 
-The idea and the architecture of the head are **anvithpothula's** (public notebook *biohub-0-953-lb-original*); this
+The idea and the architecture of the head are **anvithpothula's** (public notebook
+[*biohub-0-953-lb-original*](https://www.kaggle.com/code/anvithpothula/biohub-0-953-lb-original)); this
 code is an independent reimplementation, trained on more data. The stack it sits on: detector, DeepCenter and
-*support pack* by **pilkwang**; *harmonic-fusion v30* by **flexonafft**; `ILP_DIVISION_WEIGHT` 0.6 by
+*support pack* (including `scripts/predict_unet_transformer.py`) by **pilkwang**
+([support pack](https://www.kaggle.com/datasets/pilkwang/biohub-tracking-support-pack-50ep-v1),
+[notebook](https://www.kaggle.com/code/pilkwang/biohub-cell-tracking-two-seeds-logit-blend)); *harmonic-fusion v30* by **flexonafft**; `ILP_DIVISION_WEIGHT` 0.6 by
 **zhehaoliang**; `SECONDARY_EDGE_FEATURE_TTA_WEIGHT` 1.0 by **sjlee101**; flow2 and gapfill by **thtennant**.
 
 MIT licence.
