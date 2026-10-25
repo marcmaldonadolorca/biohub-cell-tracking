@@ -1,5 +1,6 @@
 # BioHub Cell Tracking — a bronze medal from a reimplemented, retrained sub-voxel refinement head
 
+[![tests](https://github.com/marcmaldonadolorca/biohub-cell-tracking/actions/workflows/tests.yml/badge.svg)](https://github.com/marcmaldonadolorca/biohub-cell-tracking/actions/workflows/tests.yml)
 
 Solution to the Kaggle competition [BioHub – Cell Tracking During Development](https://www.kaggle.com/competitions/biohub-cell-tracking-during-development):
 track every cell of an embryo across 3D microscopy videos and reconstruct its lineage. On top of the public
